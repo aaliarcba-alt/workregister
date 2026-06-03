@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [notify, setNotify] = useState<{msg:string,type:'success'|'error'}|null>(null)
   const [selectedEntry, setSelectedEntry] = useState<WorkEntry | null>(null)
   const [filterMonth, setFilterMonth] = useState('All')
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [filterWeek, setFilterWeek] = useState('All')
   const [form, setForm] = useState<Partial<WorkEntry>>({
     date: format(new Date(), 'yyyy-MM-dd'),
     status: 'WIP', category: '', business_area: '', goals: '',
@@ -46,10 +48,36 @@ export default function Dashboard() {
   useEffect(() => { if (user) fetchEntries() }, [user, fetchEntries])
 
   useEffect(() => {
-    if (filterMonth === 'All') { setFiltered(entries); return }
-    const mIdx = MONTHS.indexOf(filterMonth)
-    setFiltered(entries.filter(e => new Date(e.date).getMonth() + 1 === mIdx))
-  }, [entries, filterMonth])
+    let result = entries
+
+    if (filterMonth !== 'All') {
+      const mIdx = MONTHS.indexOf(filterMonth)
+      result = result.filter(e => new Date(e.date).getMonth() + 1 === mIdx)
+    }
+
+    if (filterStatus !== 'All') {
+      result = result.filter(e => e.status === filterStatus)
+    }
+
+    if (filterWeek === 'This Week') {
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      startOfWeek.setDate(now.getDate() - now.getDay())
+      startOfWeek.setHours(0, 0, 0, 0)
+      result = result.filter(e => new Date(e.date) >= startOfWeek)
+    } else if (filterWeek === 'Last Week') {
+      const now = new Date()
+      const startOfLastWeek = new Date(now)
+      startOfLastWeek.setDate(now.getDate() - now.getDay() - 7)
+      startOfLastWeek.setHours(0, 0, 0, 0)
+      const endOfLastWeek = new Date(startOfLastWeek)
+      endOfLastWeek.setDate(startOfLastWeek.getDate() + 6)
+      endOfLastWeek.setHours(23, 59, 59, 999)
+      result = result.filter(e => new Date(e.date) >= startOfLastWeek && new Date(e.date) <= endOfLastWeek)
+    }
+
+    setFiltered(result)
+  }, [entries, filterMonth, filterStatus, filterWeek])
 
   function showNotify(msg: string, type: 'success'|'error') {
     setNotify({ msg, type })
@@ -179,11 +207,21 @@ export default function Dashboard() {
                 <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 22, fontWeight: 700, color: '#e8edf5', margin: '0 0 4px' }}>My Work Log</h1>
                 <p style={{ color: '#4a6380', fontSize: 14, margin: 0 }}>{filtered.length} entries</p>
               </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <select className="input-field" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ width: 'auto', padding: '8px 12px' }}>
-                  {MONTHS.map(m => <option key={m}>{m}</option>)}
-                </select>
-                <button className="btn-primary" onClick={() => { resetForm(); setView('add') }}>+ Add Entry</button>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select className="input-field" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ width: 'auto', padding: '8px 12px' }}>
+                      {MONTHS.map(m => <option key={m}>{m}</option>)}
+                  </select>
+                  <select className="input-field" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ width: 'auto', padding: '8px 12px' }}>
+                    <option>All</option>
+                    <option>WIP</option>
+                    <option>Complete</option>
+                  </select>
+                  <select className="input-field" value={filterWeek} onChange={e => setFilterWeek(e.target.value)} style={{ width: 'auto', padding: '8px 12px' }}>
+                    <option>All</option>
+                    <option>This Week</option>
+                    <option>Last Week</option>
+                  </select>
+                  <button className="btn-primary" onClick={() => { resetForm(); setView('add') }}>+ Add Entry</button>
               </div>
             </div>
 
