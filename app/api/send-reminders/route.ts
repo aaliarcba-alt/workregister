@@ -46,6 +46,7 @@ export async function GET() {
         await transporter.sendMail({
           from: `"Sintex Digital Team" <${process.env.GMAIL_USER}>`,
           to: employee.employee_email,
+          cc: 'aalia_dandawala@welspun.com, manish_korgaonkar@welspun.com',
           subject: 'Reminder: Please fill your Work Register for today',
           html: `
             <p>Hi ${employee.employee_name},</p>
