@@ -42,23 +42,34 @@ export const GOALS = [
 ]
 
 export const CATEGORIES = [
-  'Power BI',
-  'Common',
-  'ETL',
-  'Data Quality',
-  'Automation',
+  'Meeting - Internal/Stakeholder',
+  'Documentation - PBI/BRS/ETL/DS/Model',
+  'PowerBI Development',
+  'Data Issues Detection/Correction',
+  'Training/Workshops',
+  'ETL Development',
+  'Data Modelling',
+  'Business Requirements Discussions',
+  'Data Mapping',
+  'UAT testing Power BI',
+  'Emails- Stakeholder Communication',
+  'DS - Model Development',
+  'DS - Data Collection',
   'Other',
 ]
 
 export const BUSINESS_AREAS = [
   'Common',
-  'DS - Data Collection',
-  'DS - Model Development',
-  'DS - Data Quality',
-  'PowerBI Develop',
-  'Training/Workshop',
-  'Data Issues Det.',
-  'Other',
+  'Sales-B2C',
+  'Sales - B2B',
+  'CEO',
+  'Marketing',
+  'Manufacturing',
+  'Finance',
+  'HR',
+  'SCM - Logistics',
+  'SCM - Plants',
+  'SCM - Procurement',
 ]
 
 export const EMPLOYEES = [
@@ -66,8 +77,8 @@ export const EMPLOYEES = [
   { name: 'Sundari Maurya', email: 'sundari_maurya@welspun.com' },
   { name: 'Shravan Jadhav', email: 'shravan_jadhav@welspun.com' },
   { name: 'Sharad Yadav', email: 'sharad_yadav1@welspun.com' },
-  { name: 'Sanjeev Singh', email: 'sanjeev_singh@welspun.com' },
-  { name: 'Riya Agarwal', email: 'riya_agarwal@welspun.com' },
+  { name: 'Sanjeev Singh', email: 'sanjeev_singh2@welspun.com' },
+  { name: 'Riya Agarwal', email: 'riya_agrawal@welspun.com' },
   { name: 'Rajesh Mishra', email: 'rajesh_mishra@welspun.com' },
   { name: 'Deepika Dalvi', email: 'deepika_dalvi@welspun.com' },
   { name: 'Hemil Shah', email: 'hemil_shah@welspun.com' },
