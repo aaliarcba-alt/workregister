@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { GOALS, CATEGORIES, BUSINESS_AREAS, WorkEntry } from '@/lib/supabase'
 import { format } from 'date-fns'
+import * as XLSX from 'xlsx'
 
 type User = { id: string; name: string; email: string; designation: string; isManager: boolean }
 
@@ -53,6 +54,42 @@ export default function Dashboard() {
   function showNotify(msg: string, type: 'success'|'error') {
     setNotify({ msg, type })
     setTimeout(() => setNotify(null), 3000)
+  }
+
+  function exportToExcel(type: 'all' | 'monthly' | 'weekly') {
+    const now = new Date()
+    let exportData = entries
+
+    if (type === 'monthly') {
+      const month = now.getMonth()
+      const year = now.getFullYear()
+      exportData = entries.filter(e => {
+        const d = new Date(e.date)
+        return d.getMonth() === month && d.getFullYear() === year
+      })
+    } else if (type === 'weekly') {
+      const weekAgo = new Date(now)
+      weekAgo.setDate(now.getDate() - 7)
+      exportData = entries.filter(e => new Date(e.date) >= weekAgo)
+    }
+
+    const data = exportData.map(e => ({
+      Date: e.date,
+      Category: e.category,
+      'Business Area': e.business_area,
+      'Report Name': e.report_name,
+      'ETL Job': e.etl_job_name,
+      'Task Details': e.task_details,
+      'Time Taken (hrs HH:M)': e.time_taken,
+      Status: e.status,
+      Goals: e.goals,
+      Comment: e.comment,
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Work Register')
+    XLSX.writeFile(wb, `work-register-${type}-${format(now, 'yyyy-MM-dd')}.xlsx`)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -164,6 +201,19 @@ export default function Dashboard() {
               ))}
             </div>
 
+            {/* Export buttons */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button onClick={() => exportToExcel('all')} style={{ background: '#0d1b2e', color: '#8ba3c4', border: '1px solid #162d47', padding: '6px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>
+                ↓ Export All
+              </button>
+              <button onClick={() => exportToExcel('monthly')} style={{ background: '#0d1b2e', color: '#8ba3c4', border: '1px solid #162d47', padding: '6px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>
+                ↓ Export This Month
+              </button>
+              <button onClick={() => exportToExcel('weekly')} style={{ background: '#0d1b2e', color: '#8ba3c4', border: '1px solid #162d47', padding: '6px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>
+                ↓ Export This Week
+              </button>
+            </div>
+
             {/* Table */}
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               {loading ? (
@@ -175,7 +225,7 @@ export default function Dashboard() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid #162d47' }}>
-                        {['Date','Category','Business Area','Task Details','Time (h)','Goals','Status',''].map(h => (
+                        {['Date','Category','Business Area','Task Details','Time (HH:M)','Goals','Status',''].map(h => (
                           <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#4a6380', fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
