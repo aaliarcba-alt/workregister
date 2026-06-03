@@ -47,10 +47,10 @@ export async function GET() {
           from: `"Sintex Digital Team" <${process.env.GMAIL_USER}>`,
           to: employee.employee_email,
           cc: 'aalia_dandawala@welspun.com, manish_korgaonkar@welspun.com',
-          subject: 'Reminder: Please fill your Work Register for today',
+          subject: 'Reminder: Please fill your Work Register',
           html: `
             <p>Hi ${employee.employee_name},</p>
-            <p>You have not filled your Work Register for today (<b>${today}</b>).</p>
+            <p>You have not filled your Work Register for Yesterday.(<b>${today}</b>).</p>
             <p>Please log in and add your entries:</p>
             <p><a href="https://workregister-nine.vercel.app">Open Work Register</a></p>
             <br/>
