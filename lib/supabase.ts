@@ -82,4 +82,5 @@ export const EMPLOYEES = [
   { name: 'Rajesh Mishra', email: 'rajesh_mishra@welspun.com' },
   { name: 'Deepika Dalvi', email: 'deepika_dalvi@welspun.com' },
   { name: 'Hemil Shah', email: 'hemil_shah@welspun.com' },
+  { name: 'Siva Nosina', email: 'siva_nosina@welspun.com' },
 ]
