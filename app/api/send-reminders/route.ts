@@ -2,28 +2,25 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function GET() {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const today = new Date().toISOString().split('T')[0];
 
-    // Get all employees
     const { data: allEmployees } = await supabase
       .from('work_entries')
       .select('employee_email, employee_name')
       .neq('employee_email', '')
       .not('employee_email', 'is', null);
 
-    // Get unique employees
     const uniqueEmployees = Array.from(
       new Map(allEmployees?.map(e => [e.employee_email, e])).values()
     );
 
-    // Get employees who filled today
     const { data: todayEntries } = await supabase
       .from('work_entries')
       .select('employee_email')
@@ -32,7 +29,6 @@ export async function GET() {
     const filledToday = new Set(todayEntries?.map(e => e.employee_email));
     const missing = uniqueEmployees.filter(e => !filledToday.has(e.employee_email));
 
-    // Setup Gmail transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -46,7 +42,7 @@ export async function GET() {
 
     for (const employee of missing) {
       try {
-        await new Promise(resolve => setTimeout(resolve, 300)); // small delay
+        await new Promise(resolve => setTimeout(resolve, 300));
         await transporter.sendMail({
           from: `"Sintex Digital Team" <${process.env.GMAIL_USER}>`,
           to: employee.employee_email,
