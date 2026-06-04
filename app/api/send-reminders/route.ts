@@ -9,7 +9,12 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const today = new Date().toISOString().split('T')[0];
+    // Get yesterday in IST (UTC+5:30)
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + istOffset);
+    const yesterday = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
     const { data: allEmployees } = await supabase
       .from('work_entries')
@@ -21,13 +26,13 @@ export async function GET() {
       new Map(allEmployees?.map(e => [e.employee_email, e])).values()
     );
 
-    const { data: todayEntries } = await supabase
+    const { data: yesterdayEntries } = await supabase
       .from('work_entries')
       .select('employee_email')
-      .eq('date', today);
+      .eq('date', yesterdayStr);
 
-    const filledToday = new Set(todayEntries?.map(e => e.employee_email));
-    const missing = uniqueEmployees.filter(e => !filledToday.has(e.employee_email));
+    const filledYesterday = new Set(yesterdayEntries?.map(e => e.employee_email));
+    const missing = uniqueEmployees.filter(e => !filledYesterday.has(e.employee_email));
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -50,7 +55,7 @@ export async function GET() {
           subject: 'Reminder: Please fill your Work Register',
           html: `
             <p>Hi ${employee.employee_name},</p>
-            <p>You have not filled your Work Register for Yesterday.(<b>${today}</b>).</p>
+            <p>You have not filled your Work Register for <b>${yesterdayStr}</b>.</p>
             <p>Please log in and add your entries:</p>
             <p><a href="https://workregister-nine.vercel.app">Open Work Register</a></p>
             <br/>
@@ -63,7 +68,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ success: true, date: today, missingCount: missing.length, sent, failed });
+    return NextResponse.json({ success: true, date: yesterdayStr, missingCount: missing.length, sent, failed });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
