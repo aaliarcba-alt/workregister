@@ -1,90 +1,118 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-display: 'Syne', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bg-page:    #f0f4f8;
+  --bg-card:    #ffffff;
+  --bg-card2:   #f8fafc;
+  --border:     #dde3ec;
+  --border-focus: #3872c8;
+  --text-primary:   #1a2332;
+  --text-secondary: #4a5568;
+  --text-muted:     #8496a9;
+  --accent:     #2563eb;
+  --accent-hover: #1d4ed8;
+  --row-hover:  #f1f5fb;
+  --header-bg:  #eef2f8;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #060d18;
-  color: #e8edf5;
   font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0d1b2e; }
-::-webkit-scrollbar-thumb { background: #1e3d5c; border-radius: 2px; }
-
+/* ── Inputs ── */
 .input-field {
   width: 100%;
-  background: #0d1b2e;
-  border: 1px solid #1e3d5c;
-  color: #e8edf5;
-  padding: 10px 14px;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.input-field:focus { border-color: #3872c8; }
-.input-field option { background: #0d1b2e; }
+.input-field:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(56, 114, 200, 0.12);
+}
+.input-field::placeholder { color: var(--text-muted); }
 
+select.input-field { cursor: pointer; }
+textarea.input-field { resize: vertical; }
+
+/* ── Buttons ── */
 .btn-primary {
-  background: #3872c8;
+  background: var(--accent);
   color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 9px 20px;
+  border-radius: 7px;
   font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   border: none;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  transition: background 0.15s, transform 0.1s;
 }
-.btn-primary:hover { background: #2d5fa8; }
+.btn-primary:hover  { background: var(--accent-hover); }
 .btn-primary:active { transform: scale(0.98); }
 
 .btn-secondary {
-  background: transparent;
-  color: #8ba3c4;
-  padding: 10px 20px;
-  border-radius: 8px;
+  background: white;
+  color: var(--text-secondary);
+  padding: 9px 20px;
+  border-radius: 7px;
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  border: 1px solid #1e3d5c;
+  border: 1.5px solid var(--border);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
-.btn-secondary:hover { border-color: #3872c8; color: #e8edf5; }
+.btn-secondary:hover {
+  border-color: var(--border-focus);
+  color: var(--accent);
+  background: #f0f5ff;
+}
 
+/* ── Cards ── */
 .card {
-  background: #0d1b2e;
-  border: 1px solid #162d47;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
+/* ── Badges ── */
 .badge-complete {
-  background: rgba(34,197,94,0.15);
-  color: #4ade80;
+  background: #dcfce7;
+  color: #15803d;
   padding: 3px 10px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
 }
 .badge-wip {
-  background: rgba(251,191,36,0.15);
-  color: #fbbf24;
+  background: #fef9c3;
+  color: #a16207;
   padding: 3px 10px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
 }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-page); }
+::-webkit-scrollbar-thumb { background: #c8d3e0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
