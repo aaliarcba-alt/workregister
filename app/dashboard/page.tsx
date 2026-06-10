@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { GOALS, CATEGORIES, BUSINESS_AREAS, WorkEntry } from '@/lib/supabase'
 import { format } from 'date-fns'
@@ -8,8 +8,8 @@ import * as XLSX from 'xlsx'
 type User = { id: string; name: string; email: string; designation: string; isManager: boolean }
 
 const MONTHS = ['All','January','February','March','April','May','June','July','August','September','October','November','December']
+const DRAFT_KEY = 'wr_entry_draft'
 
-/* ── Multi-task row type ── */
 interface TaskRow {
   id: string
   category: string
@@ -21,6 +21,12 @@ interface TaskRow {
   status: 'Complete' | 'WIP'
   goals: string
   comment: string
+}
+
+interface Draft {
+  date: string
+  rows: TaskRow[]
+  savedAt: string
 }
 
 function makeBlankRow(): TaskRow {
@@ -39,22 +45,35 @@ export default function Dashboard() {
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [notify, setNotify] = useState<{msg:string,type:'success'|'error'}|null>(null)
+  const [notify, setNotify] = useState<{msg:string,type:'success'|'error'|'info'}|null>(null)
   const [selectedEntry, setSelectedEntry] = useState<WorkEntry | null>(null)
   const [filterMonth, setFilterMonth] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
   const [filterWeek, setFilterWeek] = useState('All')
+  const [hasDraft, setHasDraft] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null)
 
-  /* edit form (single row) */
   const [form, setForm] = useState<Partial<WorkEntry>>({
     date: format(new Date(), 'yyyy-MM-dd'),
     status: 'WIP', category: '', business_area: '', goals: '',
     task_details: '', time_taken: undefined, report_name: '', etl_job_name: '', comment: ''
   })
 
-  /* multi-task add form */
   const [entryDate, setEntryDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [taskRows, setTaskRows] = useState<TaskRow[]>([makeBlankRow()])
+
+  // Check for draft on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const draft: Draft = JSON.parse(raw)
+        setHasDraft(true)
+        setDraftSavedAt(draft.savedAt)
+      }
+    } catch {}
+  }, [])
 
   useEffect(() => {
     const stored = localStorage.getItem('wr_user')
@@ -77,16 +96,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     let result = entries
-
     if (filterMonth !== 'All') {
       const mIdx = MONTHS.indexOf(filterMonth)
       result = result.filter(e => new Date(e.date).getMonth() + 1 === mIdx)
     }
-
     if (filterStatus !== 'All') {
       result = result.filter(e => e.status === filterStatus)
     }
-
     if (filterWeek === 'This Week') {
       const now = new Date()
       const startOfWeek = new Date(now)
@@ -103,11 +119,49 @@ export default function Dashboard() {
       endOfLastWeek.setHours(23, 59, 59, 999)
       result = result.filter(e => new Date(e.date) >= startOfLastWeek && new Date(e.date) <= endOfLastWeek)
     }
-
     setFiltered(result)
   }, [entries, filterMonth, filterStatus, filterWeek])
 
-  function showNotify(msg: string, type: 'success'|'error') {
+  // Auto-save draft whenever form changes (1.5s debounce)
+  useEffect(() => {
+    if (view !== 'add') return
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => {
+      saveDraft(false)
+    }, 1500)
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskRows, entryDate, view])
+
+  function saveDraft(showToast = true) {
+    try {
+      const now = format(new Date(), 'HH:mm')
+      const draft: Draft = { date: entryDate, rows: taskRows, savedAt: now }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      setHasDraft(true)
+      setDraftSavedAt(now)
+      if (showToast) showNotify('Draft saved!', 'info')
+    } catch { if (showToast) showNotify('Could not save draft', 'error') }
+  }
+
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (!raw) return
+      const draft: Draft = JSON.parse(raw)
+      setEntryDate(draft.date)
+      setTaskRows(draft.rows)
+      setView('add')
+    } catch { showNotify('Could not load draft', 'error') }
+  }
+
+  function discardDraft() {
+    localStorage.removeItem(DRAFT_KEY)
+    setHasDraft(false)
+    setDraftSavedAt(null)
+  }
+
+  function showNotify(msg: string, type: 'success'|'error'|'info') {
     setNotify({ msg, type })
     setTimeout(() => setNotify(null), 3000)
   }
@@ -125,7 +179,7 @@ export default function Dashboard() {
     const data = exportData.map(e => ({
       Date: e.date, Category: e.category, 'Business Area': e.business_area,
       'Report Name': e.report_name, 'ETL Job': e.etl_job_name,
-      'Task Details': e.task_details, 'Time Taken (hrs HH:M)': e.time_taken,
+      'Task Details': e.task_details, 'Time Taken (hrs)': e.time_taken,
       Status: e.status, Goals: e.goals, Comment: e.comment,
     }))
     const ws = XLSX.utils.json_to_sheet(data)
@@ -134,14 +188,12 @@ export default function Dashboard() {
     XLSX.writeFile(wb, `work-register-${type}-${format(now, 'yyyy-MM-dd')}.xlsx`)
   }
 
-  /* ── Task row helpers ── */
   function updateRow(id: string, field: keyof TaskRow, value: string) {
     setTaskRows(rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r))
   }
   function addRow() { setTaskRows(rows => [...rows, makeBlankRow()]) }
   function removeRow(id: string) { if (taskRows.length > 1) setTaskRows(rows => rows.filter(r => r.id !== id)) }
 
-  /* ── Validate & submit multi-task ── */
   async function handleMultiSubmit() {
     for (const row of taskRows) {
       if (!row.category) return showNotify('Select category for all tasks', 'error')
@@ -169,6 +221,7 @@ export default function Dashboard() {
           }),
         })
       ))
+      discardDraft()
       showNotify(`${taskRows.length} task(s) saved!`, 'success')
       setTaskRows([makeBlankRow()])
       setEntryDate(format(new Date(), 'yyyy-MM-dd'))
@@ -178,7 +231,6 @@ export default function Dashboard() {
     finally { setSaving(false) }
   }
 
-  /* ── Edit submit (single row, unchanged logic) ── */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.task_details) return showNotify('Task details required', 'error')
@@ -224,11 +276,16 @@ export default function Dashboard() {
 
   if (!user) return null
 
-  /* ══════════════════════════════════════════════════ */
+  const notifyColors = {
+    success: { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+    error:   { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' },
+    info:    { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* ── Topbar ── */}
+      {/* Topbar */}
       <div style={{ background: '#ffffff', borderBottom: '1px solid #dde3ec', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, boxShadow: '0 1px 3px rgba(0,0,0,0.07)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -237,29 +294,37 @@ export default function Dashboard() {
           <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 600, fontSize: 15, color: '#1a2332' }}>Work Register</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Draft resume banner in topbar */}
+          {hasDraft && view === 'list' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '5px 12px', fontSize: 13 }}>
+              <span style={{ color: '#92400e' }}>📝 Draft saved {draftSavedAt ? `at ${draftSavedAt}` : ''}</span>
+              <button onClick={loadDraft} style={{ background: '#f59e0b', color: 'white', border: 'none', borderRadius: 5, padding: '3px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Resume</button>
+              <button onClick={discardDraft} style={{ background: 'transparent', border: 'none', color: '#a16207', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+          )}
           <span style={{ color: '#4a5568', fontSize: 13 }}>{user.name}</span>
           <button onClick={logout} style={{ background: 'white', border: '1px solid #dde3ec', color: '#4a5568', padding: '5px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Sign out</button>
         </div>
       </div>
 
-      {/* ── Notification ── */}
-      {notify && (
-        <div style={{ position: 'fixed', top: 68, right: 20, zIndex: 200,
-          background: notify.type === 'success' ? '#f0fdf4' : '#fef2f2',
-          border: `1px solid ${notify.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
-          color: notify.type === 'success' ? '#15803d' : '#b91c1c',
-          padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-          {notify.msg}
-        </div>
-      )}
+      {/* Notification */}
+      {notify && (() => {
+        const c = notifyColors[notify.type]
+        return (
+          <div style={{ position: 'fixed', top: 68, right: 20, zIndex: 200,
+            background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+            padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            {notify.msg}
+          </div>
+        )
+      })()}
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px' }}>
 
         {/* ══════ LIST VIEW ══════ */}
         {view === 'list' && (
           <>
-            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 22, fontWeight: 700, color: '#1a2332', margin: '0 0 4px' }}>My Work Log</h1>
@@ -360,15 +425,27 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* ══════ ADD VIEW — multi-task ══════ */}
+        {/* ══════ ADD VIEW ══════ */}
         {view === 'add' && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div>
                 <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, fontWeight: 700, color: '#1a2332', margin: '0 0 3px' }}>Add New Entry</h1>
-                <p style={{ fontSize: 12, color: '#8496a9', margin: 0 }}>Add multiple tasks for the same day — total hours must be ≥ 7.</p>
+                <p style={{ fontSize: 12, color: '#8496a9', margin: 0 }}>
+                  Add multiple tasks for the same day — total hours must be ≥ 7.
+                  {draftSavedAt && <span style={{ color: '#2563eb', marginLeft: 8 }}>✓ Auto-saved at {draftSavedAt}</span>}
+                </p>
               </div>
-              <button className="btn-secondary" onClick={() => setView('list')}>← Back</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* Save as Draft button */}
+                <button
+                  onClick={() => saveDraft(true)}
+                  style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '7px 14px', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}
+                >
+                  💾 Save Draft
+                </button>
+                <button className="btn-secondary" onClick={() => setView('list')}>← Back</button>
+              </div>
             </div>
 
             <div className="card">

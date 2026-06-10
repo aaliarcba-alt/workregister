@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 
+// Canonical employee list — same as lib/supabase.ts EMPLOYEES
+// Using this instead of querying work_entries so new employees who haven't
+// made any entry yet still receive reminders.
+const EMPLOYEES = [
+  { name: 'Aalia Dandawala', email: 'aalia_dandawala@welspun.com' },
+  { name: 'Sundari Maurya',  email: 'sundari_maurya@welspun.com' },
+  { name: 'Shravan Jadhav',  email: 'shravan_jadhav@welspun.com' },
+  { name: 'Sharad Yadav',    email: 'sharad_yadav1@welspun.com' },
+  { name: 'Sanjeev Singh',   email: 'sanjeev_singh2@welspun.com' },
+  { name: 'Riya Agarwal',    email: 'riya_agrawal@welspun.com' },
+  { name: 'Rajesh Mishra',   email: 'rajesh_mishra@welspun.com' },
+  { name: 'Deepika Dalvi',   email: 'deepika_dalvi@welspun.com' },
+  { name: 'Hemil Shah',      email: 'hemil_shah@welspun.com' },
+  { name: 'Siva Nosina',     email: 'siva_nosina@welspun.com' },
+];
+
 export async function GET() {
   try {
     const supabase = createClient(
@@ -16,24 +32,43 @@ export async function GET() {
     const yesterday = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-    const { data: allEmployees } = await supabase
-      .from('work_entries')
-      .select('employee_email, employee_name')
-      .neq('employee_email', '')
-      .not('employee_email', 'is', null);
-
-    const uniqueEmployees = Array.from(
-      new Map(allEmployees?.map(e => [e.employee_email, e])).values()
-    );
-
-    const { data: yesterdayEntries } = await supabase
+    // Get which employees filled yesterday
+    const { data: yesterdayEntries, error: dbError } = await supabase
       .from('work_entries')
       .select('employee_email')
       .eq('date', yesterdayStr);
 
-    const filledYesterday = new Set(yesterdayEntries?.map(e => e.employee_email));
-    const missing = uniqueEmployees.filter(e => !filledYesterday.has(e.employee_email));
+    if (dbError) {
+      return NextResponse.json({ success: false, error: dbError.message }, { status: 500 });
+    }
 
+    const filledYesterday = new Set(yesterdayEntries?.map(e => e.employee_email) ?? []);
+
+    // Find who is missing (skip weekends — Saturday=6, Sunday=0)
+    const dayOfWeek = yesterday.getDay(); // based on IST yesterday
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        reason: 'Yesterday was a weekend — no reminders sent',
+        date: yesterdayStr,
+      });
+    }
+
+    const missing = EMPLOYEES.filter(e => !filledYesterday.has(e.email));
+
+    if (missing.length === 0) {
+      return NextResponse.json({
+        success: true,
+        date: yesterdayStr,
+        missingCount: 0,
+        sent: [],
+        failed: [],
+        message: 'All employees filled their register — no reminders needed',
+      });
+    }
+
+    // Send via Gmail
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -42,33 +77,46 @@ export async function GET() {
       },
     });
 
-    const sent = [];
-    const failed = [];
+    const sent: string[] = [];
+    const failed: { email: string; error: string }[] = [];
 
     for (const employee of missing) {
       try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 400));
         await transporter.sendMail({
           from: `"Sintex Digital Team" <${process.env.GMAIL_USER}>`,
-          to: employee.employee_email,
+          to: employee.email,
           cc: 'aalia_dandawala@welspun.com, manish_korgaonkar@welspun.com',
-          subject: 'Reminder: Please fill your Work Register',
+          subject: `Reminder: Please fill your Work Register for ${yesterdayStr}`,
           html: `
-            <p>Hi ${employee.employee_name},</p>
-            <p>You have not filled your Work Register for <b>${yesterdayStr}</b>.</p>
-            <p>Please log in and add your entries:</p>
-            <p><a href="https://workregister-nine.vercel.app">Open Work Register</a></p>
-            <br/>
-            <p>Regards,<br/>Sintex Digital Team</p>
+            <div style="font-family: Arial, sans-serif; max-width: 480px;">
+              <p>Hi ${employee.name},</p>
+              <p>You have not filled your Work Register for <b>${yesterdayStr}</b>.</p>
+              <p>Please log in and add your entries:</p>
+              <p>
+                <a href="https://workregister-nine.vercel.app"
+                   style="background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">
+                  Open Work Register
+                </a>
+              </p>
+              <br/>
+              <p style="color:#888;font-size:12px;">Regards,<br/>Sintex Digital Team</p>
+            </div>
           `,
         });
-        sent.push(employee.employee_email);
+        sent.push(employee.email);
       } catch (err: any) {
-        failed.push({ email: employee.employee_email, error: err.message });
+        failed.push({ email: employee.email, error: err.message });
       }
     }
 
-    return NextResponse.json({ success: true, date: yesterdayStr, missingCount: missing.length, sent, failed });
+    return NextResponse.json({
+      success: true,
+      date: yesterdayStr,
+      missingCount: missing.length,
+      sent,
+      failed,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
