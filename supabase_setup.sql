@@ -47,6 +47,8 @@ insert into employees (name, email, password, designation) values
   ('Rajesh Mishra',    'rajesh_mishra@welspun.com',    'password123', 'employee'),
   ('Deepika Dalvi',    'deepika_dalvi@welspun.com',    'password123', 'employee'),
   ('Hemil Shah',       'hemil_shah@welspun.com',       'password123', 'employee'),
+  ('Rahul Pandey',       'Rahul_Pandey@welspun.com',   'password123', 'employee'),
+  ('Siva Nosina',       'Siva_Nosina@welspun.com',     'password123', 'employee'),
   ('Manish Korgaonkar','manish_korgaonkar@welspun.com','password123', 'cdo');
 
 -- NOTE: Replace 'password123' with actual passwords before running
