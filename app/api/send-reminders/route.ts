@@ -7,7 +7,6 @@ import nodemailer from 'nodemailer';
 // made any entry yet still receive reminders.
 const EMPLOYEES = [
   { name: 'Aalia Dandawala', email: 'aalia_dandawala@welspun.com' },
-  { name: 'Sundari Maurya',  email: 'sundari_maurya@welspun.com' },
   { name: 'Shravan Jadhav',  email: 'shravan_jadhav@welspun.com' },
   { name: 'Sharad Yadav',    email: 'sharad_yadav1@welspun.com' },
   { name: 'Sanjeev Singh',   email: 'sanjeev_singh2@welspun.com' },
