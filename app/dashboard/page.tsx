@@ -301,7 +301,7 @@ export default function Dashboard() {
     // Copy body to clipboard
     navigator.clipboard.writeText(bodyText).catch(() => {})
     // Open OWA compose with just to + subject (body too long for URL)
-    const owaUrl = `https://outlook.office.com/mail/deeplink/compose?to=mainsh_korgaonkar%40welspun.com&subject=${subject}`
+    const owaUrl = `https://outlook.office.com/mail/deeplink/compose?to=manish_korgaonkar%40welspun.com&subject=${subject}`
     window.open(owaUrl, '_blank')
     showNotify('Summary copied to clipboard — paste it in the email body!', 'info')
   }
