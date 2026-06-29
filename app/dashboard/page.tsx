@@ -272,6 +272,35 @@ export default function Dashboard() {
 
   function logout() { localStorage.removeItem('wr_user'); router.push('/login') }
 
+  function mailToManager() {
+    const now = new Date()
+    const weekAgo = new Date(now)
+    weekAgo.setDate(now.getDate() - 7)
+    const weekEntries = entries.filter(e => new Date(e.date) >= weekAgo)
+    if (weekEntries.length === 0) {
+      showNotify('No entries in the past week to send', 'info')
+      return
+    }
+    // Group by date
+    const byDate: Record<string, WorkEntry[]> = {}
+    weekEntries.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
+      if (!byDate[e.date]) byDate[e.date] = []
+      byDate[e.date].push(e)
+    })
+    const lines: string[] = [`Work Register Summary — ${user!.name}`, `Period: ${format(weekAgo, 'dd MMM')} – ${format(now, 'dd MMM yyyy')}`, ``]
+    Object.entries(byDate).forEach(([date, dayEntries]) => {
+      const totalHrs = dayEntries.reduce((s, e) => s + e.time_taken, 0)
+      lines.push(`📅 ${date} (${totalHrs}h total)`)
+      dayEntries.forEach(e => {
+        lines.push(`  • [${e.category}] ${e.task_details} — ${e.time_taken}h | ${e.status}`)
+      })
+      lines.push(``)
+    })
+    const body = encodeURIComponent(lines.join('\n'))
+    const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(weekAgo, 'dd MMM')}`)
+    window.location.href = `mailto:mainsh_korgaonkar@welspun.com?subject=${subject}&body=${body}`
+  }
+
   const totalEntryHours = taskRows.reduce((s, r) => s + (Number(r.time_taken) || 0), 0)
 
   if (!user) return null
@@ -364,6 +393,13 @@ export default function Dashboard() {
                   <button onClick={() => exportToExcel('weekly')} style={{ background: 'white', color: '#4a5568', border: '1px solid #dde3ec', padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>↓ Weekly</button>
                 </div>
               </div>
+              <div style={{ borderLeft: '1px solid #dde3ec', height: 36, marginLeft: 4 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#8496a9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Weekly Report</label>
+                <button onClick={mailToManager} style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                  ✉️ Mail to Manager
+                </button>
+              </div>
             </div>
 
             {/* Stats */}
@@ -405,9 +441,9 @@ export default function Dashboard() {
                           <td style={{ padding: '10px 16px', color: '#4a5568', whiteSpace: 'nowrap' }}>{entry.date}</td>
                           <td style={{ padding: '10px 16px', color: '#1a2332' }}>{entry.category}</td>
                           <td style={{ padding: '10px 16px', color: '#4a5568' }}>{entry.business_area}</td>
-                          <td style={{ padding: '10px 16px', color: '#1a2332', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.task_details}</td>
+                          <td style={{ padding: '10px 16px', color: '#1a2332', maxWidth: 280, wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: 1.45 }}>{entry.task_details}</td>
                           <td style={{ padding: '10px 16px', color: '#1a2332', textAlign: 'center', fontWeight: 600 }}>{entry.time_taken}</td>
-                          <td style={{ padding: '10px 16px', color: '#4a5568', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.goals}</td>
+                          <td style={{ padding: '10px 16px', color: '#4a5568', maxWidth: 160, wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: 1.45 }}>{entry.goals}</td>
                           <td style={{ padding: '10px 16px' }}>
                             <span className={entry.status === 'Complete' ? 'badge-complete' : 'badge-wip'}>{entry.status}</span>
                           </td>
@@ -484,10 +520,21 @@ export default function Dashboard() {
                     background: idx % 2 === 0 ? 'white' : '#f8fafc',
                     padding: 8, borderRadius: 8, border: '1px solid #dde3ec',
                   }}>
-                    <select className="input-field" value={row.category} onChange={e => updateRow(row.id, 'category', e.target.value)}>
-                      <option value="">Select…</option>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <select className="input-field"
+                        value={CATEGORIES.includes(row.category) || row.category === '' ? row.category : '__custom__'}
+                        onChange={e => updateRow(row.id, 'category', e.target.value === '__custom__' ? '' : e.target.value)}>
+                        <option value="">Select…</option>
+                        {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        <option value="__custom__">Other (type below)</option>
+                      </select>
+                      {!CATEGORIES.includes(row.category) && (
+                        <input className="input-field" type="text" placeholder="Type custom category…"
+                          value={row.category}
+                          onChange={e => updateRow(row.id, 'category', e.target.value)}
+                          style={{ fontSize: 12 }} />
+                      )}
+                    </div>
                     <select className="input-field" value={row.business_area} onChange={e => updateRow(row.id, 'business_area', e.target.value)}>
                       <option value="">Select…</option>
                       {BUSINESS_AREAS.map(b => <option key={b}>{b}</option>)}
@@ -548,10 +595,20 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Category *</label>
-                    <select className="input-field" value={form.category || ''} onChange={e => setForm(f => ({...f, category: e.target.value}))} required>
+                    <select className="input-field"
+                      value={CATEGORIES.includes(form.category || '') || !form.category ? (form.category || '') : '__custom__'}
+                      onChange={e => setForm(f => ({...f, category: e.target.value === '__custom__' ? '' : e.target.value}))}
+                      required={CATEGORIES.includes(form.category || '') || !form.category}>
                       <option value="">Select category</option>
                       {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      <option value="__custom__">Other (type below)</option>
                     </select>
+                    {!CATEGORIES.includes(form.category || '') && (
+                      <input className="input-field" type="text" placeholder="Type custom category…"
+                        value={form.category || ''}
+                        onChange={e => setForm(f => ({...f, category: e.target.value}))}
+                        style={{ marginTop: 6 }} required />
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Business Area *</label>
