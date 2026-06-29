@@ -274,9 +274,16 @@ export default function Dashboard() {
 
   function mailToManager() {
     const now = new Date()
-    const weekAgo = new Date(now)
-    weekAgo.setDate(now.getDate() - 7)
-    const weekEntries = entries.filter(e => new Date(e.date) >= weekAgo)
+    // Find Monday of the current week
+    const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
+    // Find Sunday of the current week
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const mondayStr = format(monday, 'yyyy-MM-dd')
+    const sundayStr = format(sunday, 'yyyy-MM-dd')
+    const weekEntries = entries.filter(e => e.date >= mondayStr && e.date <= sundayStr)
     if (weekEntries.length === 0) {
       showNotify('No entries in the past week to send', 'info')
       return
@@ -287,7 +294,7 @@ export default function Dashboard() {
       if (!byDate[e.date]) byDate[e.date] = []
       byDate[e.date].push(e)
     })
-    const lines: string[] = [`Work Register Summary — ${user!.name}`, `Period: ${format(weekAgo, 'dd MMM')} – ${format(now, 'dd MMM yyyy')}`, ``]
+    const lines: string[] = [`Work Register Summary — ${user!.name}`, `Period: ${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM yyyy')}`, ``]
     Object.entries(byDate).forEach(([date, dayEntries]) => {
       const totalHrs = dayEntries.reduce((s, e) => s + e.time_taken, 0)
       lines.push(`📅 ${date} (${totalHrs}h total)`)
@@ -297,7 +304,7 @@ export default function Dashboard() {
       lines.push(``)
     })
     const bodyText = lines.join('\n')
-    const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(weekAgo, 'dd MMM')}`)
+    const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(monday, 'dd MMM')}`)
     // Copy body to clipboard
     navigator.clipboard.writeText(bodyText).catch(() => {})
     // Open OWA compose with just to + subject (body too long for URL)
