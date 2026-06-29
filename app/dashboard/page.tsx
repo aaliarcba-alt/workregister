@@ -298,7 +298,8 @@ export default function Dashboard() {
     })
     const body = encodeURIComponent(lines.join('\n'))
     const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(weekAgo, 'dd MMM')}`)
-    window.location.href = `mailto:mainsh_korgaonkar@welspun.com?subject=${subject}&body=${body}`
+    const owaUrl = `https://outlook.office.com/mail/deeplink/compose?to=mainsh_korgaonkar%40welspun.com&subject=${subject}&body=${body}`
+    window.open(owaUrl, '_blank')
   }
 
   const totalEntryHours = taskRows.reduce((s, r) => s + (Number(r.time_taken) || 0), 0)
