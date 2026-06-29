@@ -292,7 +292,7 @@ export default function Dashboard() {
       const totalHrs = dayEntries.reduce((s, e) => s + e.time_taken, 0)
       lines.push(`📅 ${date} (${totalHrs}h total)`)
       dayEntries.forEach(e => {
-        lines.push(`  • [${e.category}] ${e.task_details} — ${e.time_taken}h | ${e.status}`)
+        lines.push(`  • ${e.task_details} — ${e.time_taken}h | ${e.status}`)
       })
       lines.push(``)
     })
