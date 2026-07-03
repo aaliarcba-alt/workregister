@@ -303,13 +303,16 @@ export default function Dashboard() {
       if (e.goals) goalHours[e.goals] = (goalHours[e.goals] || 0) + e.time_taken
     })
 
-    // Group tasks by category
+    // Group tasks by category (completed only)
     const byCategory: Record<string, string[]> = {}
-    weekEntries.forEach(e => {
+    weekEntries.filter(e => e.status === 'Complete').forEach(e => {
       const cat = e.category || 'Other'
       if (!byCategory[cat]) byCategory[cat] = []
       if (!byCategory[cat].includes(e.task_details)) byCategory[cat].push(e.task_details)
     })
+
+    // Pending (WIP) tasks flat list
+    const pendingTasks = weekEntries.filter(e => e.status === 'WIP').map(e => e.task_details)
 
     const lines: string[] = [
       `Hi Manish,`,
@@ -327,6 +330,12 @@ export default function Dashboard() {
       tasks.forEach(t => lines.push(`   • ${t}`))
       lines.push(``)
     })
+
+    if (pendingTasks.length > 0) {
+      lines.push(`── PENDING TASKS ────────────────────────────`)
+      pendingTasks.forEach(t => lines.push(`• ${t}`))
+      lines.push(``)
+    }
 
     lines.push(
       `── NEW DASHBOARDS / APPS / ETL JOBS ────────`,
