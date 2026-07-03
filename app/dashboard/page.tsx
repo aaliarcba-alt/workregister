@@ -300,29 +300,35 @@ export default function Dashboard() {
     // Goal breakdown with hours
     const goalHours: Record<string, number> = {}
     weekEntries.forEach(e => {
-      if (e.goals) {
-        goalHours[e.goals] = (goalHours[e.goals] || 0) + e.time_taken
-      }
+      if (e.goals) goalHours[e.goals] = (goalHours[e.goals] || 0) + e.time_taken
     })
 
-    // Completed and WIP tasks (deduplicated by task_details)
-    const completed = weekEntries.filter(e => e.status === 'Complete')
-    const wip = weekEntries.filter(e => e.status === 'WIP')
+    // Group tasks by category
+    const byCategory: Record<string, string[]> = {}
+    weekEntries.forEach(e => {
+      const cat = e.category || 'Other'
+      if (!byCategory[cat]) byCategory[cat] = []
+      if (!byCategory[cat].includes(e.task_details)) byCategory[cat].push(e.task_details)
+    })
 
     const lines: string[] = [
       `Hi Manish,`,
       ``,
-      `Please find my work summary for the week of ${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM yyyy')}.`,
+      `Sharing the weekly report for ${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM yyyy')}.`,
       ``,
       `── GOAL-WISE BREAKDOWN ─────────────────────`,
       ...Object.entries(goalHours).map(([goal, hrs]) => `• ${goal} — ${hrs}h`),
       ``,
-      `── COMPLETED TASKS ─────────────────────────`,
-      ...completed.map(e => `• ${e.task_details}`),
-      ``,
-      `── IN PROGRESS ─────────────────────────────`,
-      ...(wip.length > 0 ? wip.map(e => `• ${e.task_details}`) : ['• —']),
-      ``,
+    ]
+
+    // Numbered category sections
+    Object.entries(byCategory).forEach(([cat, tasks], i) => {
+      lines.push(`${i + 1}. ${cat}`)
+      tasks.forEach(t => lines.push(`   • ${t}`))
+      lines.push(``)
+    })
+
+    lines.push(
       `── NEW DASHBOARDS / APPS / ETL JOBS ────────`,
       `Name - Status`,
       ``,
@@ -331,7 +337,7 @@ export default function Dashboard() {
       ``,
       `Regards,`,
       `${user!.name}`,
-    ]
+    )
 
     const bodyText = lines.join('\n')
     const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(monday, 'dd MMM')}`)
