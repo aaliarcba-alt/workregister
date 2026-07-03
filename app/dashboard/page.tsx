@@ -52,6 +52,8 @@ export default function Dashboard() {
   const [filterWeek, setFilterWeek] = useState('All')
   const [hasDraft, setHasDraft] = useState(false)
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+  const [showWeekPicker, setShowWeekPicker] = useState(false)
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState(0) // 0=this week, -1=last week, etc.
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null)
 
   const [form, setForm] = useState<Partial<WorkEntry>>({
@@ -272,44 +274,71 @@ export default function Dashboard() {
 
   function logout() { localStorage.removeItem('wr_user'); router.push('/login') }
 
-  function mailToManager() {
+  function getWeekBounds(offset: number) {
     const now = new Date()
-    // Find Monday of the current week
-    const dayOfWeek = now.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
+    const dayOfWeek = now.getDay()
     const monday = new Date(now)
-    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-    // Find Sunday of the current week
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + offset * 7)
     const sunday = new Date(monday)
     sunday.setDate(monday.getDate() + 6)
-    const mondayStr = format(monday, 'yyyy-MM-dd')
-    const sundayStr = format(sunday, 'yyyy-MM-dd')
+    return { monday, sunday, mondayStr: format(monday, 'yyyy-MM-dd'), sundayStr: format(sunday, 'yyyy-MM-dd') }
+  }
+
+  function getWeekLabel(offset: number) {
+    const { monday, sunday } = getWeekBounds(offset)
+    return `${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM')}`
+  }
+
+  function mailToManager(offset: number) {
+    const { monday, sunday, mondayStr, sundayStr } = getWeekBounds(offset)
     const weekEntries = entries.filter(e => e.date >= mondayStr && e.date <= sundayStr)
     if (weekEntries.length === 0) {
-      showNotify('No entries in the past week to send', 'info')
+      showNotify('No entries for the selected week', 'info')
       return
     }
-    // Group by date
-    const byDate: Record<string, WorkEntry[]> = {}
-    weekEntries.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-      if (!byDate[e.date]) byDate[e.date] = []
-      byDate[e.date].push(e)
+
+    // Goal breakdown with hours
+    const goalHours: Record<string, number> = {}
+    weekEntries.forEach(e => {
+      if (e.goals) {
+        goalHours[e.goals] = (goalHours[e.goals] || 0) + e.time_taken
+      }
     })
-    const lines: string[] = [`Work Register Summary — ${user!.name}`, `Period: ${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM yyyy')}`, ``]
-    Object.entries(byDate).forEach(([date, dayEntries]) => {
-      const totalHrs = dayEntries.reduce((s, e) => s + e.time_taken, 0)
-      lines.push(`📅 ${date} (${totalHrs}h total)`)
-      dayEntries.forEach(e => {
-        lines.push(`  • ${e.task_details} — ${e.time_taken}h | ${e.status}`)
-      })
-      lines.push(``)
-    })
+
+    // Completed and WIP tasks (deduplicated by task_details)
+    const completed = weekEntries.filter(e => e.status === 'Complete')
+    const wip = weekEntries.filter(e => e.status === 'WIP')
+
+    const lines: string[] = [
+      `Hi Manish,`,
+      ``,
+      `Please find my work summary for the week of ${format(monday, 'dd MMM')} – ${format(sunday, 'dd MMM yyyy')}.`,
+      ``,
+      `── GOAL-WISE BREAKDOWN ─────────────────────`,
+      ...Object.entries(goalHours).map(([goal, hrs]) => `• ${goal} — ${hrs}h`),
+      ``,
+      `── COMPLETED TASKS ─────────────────────────`,
+      ...completed.map(e => `• ${e.task_details}`),
+      ``,
+      `── IN PROGRESS ─────────────────────────────`,
+      ...(wip.length > 0 ? wip.map(e => `• ${e.task_details}`) : ['• —']),
+      ``,
+      `── NEW DASHBOARDS / APPS / ETL JOBS ────────`,
+      `Name - Status`,
+      ``,
+      `── NEXT WEEK'S PLAN ────────────────────────`,
+      ``,
+      ``,
+      `Regards,`,
+      `${user!.name}`,
+    ]
+
     const bodyText = lines.join('\n')
     const subject = encodeURIComponent(`Work Register Summary – ${user!.name} – Week of ${format(monday, 'dd MMM')}`)
-    // Copy body to clipboard
     navigator.clipboard.writeText(bodyText).catch(() => {})
-    // Open OWA compose with just to + subject (body too long for URL)
     const owaUrl = `https://outlook.office.com/mail/deeplink/compose?to=manish_korgaonkar%40welspun.com&subject=${subject}`
     window.open(owaUrl, '_blank')
+    setShowWeekPicker(false)
     showNotify('Summary copied to clipboard — paste it in the email body!', 'info')
   }
 
@@ -408,7 +437,7 @@ export default function Dashboard() {
               <div style={{ borderLeft: '1px solid #dde3ec', height: 36, marginLeft: 4 }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#8496a9', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Weekly Report</label>
-                <button onClick={mailToManager} style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                <button onClick={() => setShowWeekPicker(true)} style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
                   ✉️ Mail to Manager
                 </button>
               </div>
@@ -667,6 +696,27 @@ export default function Dashboard() {
         )}
 
       </div>
+
+      {/* Week Picker Modal */}
+      {showWeekPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: 12, padding: 28, width: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 700, color: '#1a2332' }}>Select Week</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#8496a9' }}>Choose which week to include in the email</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[-3, -2, -1, 0].map(offset => (
+                <button key={offset} onClick={() => mailToManager(offset)}
+                  style={{ background: '#f8fafc', border: '1px solid #dde3ec', borderRadius: 8, padding: '10px 16px', cursor: 'pointer', textAlign: 'left', fontSize: 13, color: '#1a2332', fontWeight: offset === 0 ? 600 : 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{getWeekLabel(offset)}</span>
+                  <span style={{ fontSize: 11, color: '#8496a9' }}>{offset === 0 ? 'This week' : offset === -1 ? 'Last week' : `${Math.abs(offset)} weeks ago`}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowWeekPicker(false)} style={{ marginTop: 16, width: '100%', background: 'none', border: 'none', color: '#8496a9', fontSize: 13, cursor: 'pointer', padding: '6px 0' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
