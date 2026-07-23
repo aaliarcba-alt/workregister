@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
-import { WorkEntry, EMPLOYEES } from '@/lib/supabase'
+import { WorkEntry, EMPLOYEES as FALLBACK_EMPLOYEES } from '@/lib/supabase'
 
-type User = { name: string; email: string; isManager: boolean }
+type User = { name: string; email: string; isManager: boolean; isAdmin: boolean }
 
 const MONTHS = [
   { label: 'All', value: 'all' },
@@ -27,6 +27,7 @@ export default function ManagerDashboard() {
   const [selectedEmployee, setSelectedEmployee] = useState('all')
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview'|'team'|'goals'>('overview')
+  const [employees, setEmployees] = useState(FALLBACK_EMPLOYEES)
 
   useEffect(() => {
     const stored = localStorage.getItem('wr_user')
@@ -35,6 +36,15 @@ export default function ManagerDashboard() {
     if (!u.isManager) { router.push('/dashboard'); return }
     setUser(u)
   }, [router])
+
+  // Pull the live employee list so newly-added users (via Admin panel) show up
+  // in filters without needing a redeploy.
+  useEffect(() => {
+    fetch('/api/employees')
+      .then(res => res.json())
+      .then(data => { if (data.employees?.length) setEmployees(data.employees) })
+      .catch(() => {})
+  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -56,7 +66,7 @@ export default function ManagerDashboard() {
   const completed = filteredEntries.filter(e => e.status === 'Complete').length
   const wip = filteredEntries.filter(e => e.status === 'WIP').length
   const completionPct = total > 0 ? Math.round((completed / total) * 100) : 0
-  const empCount = selectedEmployee === 'all' ? EMPLOYEES.length : 1
+  const empCount = selectedEmployee === 'all' ? employees.length : 1
 
   const employeeMap: Record<string, { name: string; complete: number; wip: number }> = {}
   filteredEntries.forEach(e => {
@@ -88,7 +98,7 @@ export default function ManagerDashboard() {
 
   const selectedEmpName = selectedEmployee === 'all'
     ? 'All employees'
-    : EMPLOYEES.find(e => e.email === selectedEmployee)?.name || selectedEmployee
+    : employees.find(e => e.email === selectedEmployee)?.name || selectedEmployee
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -103,6 +113,9 @@ export default function ManagerDashboard() {
           <span style={{ background: '#eff6ff', color: '#2563eb', fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, border: '1px solid #bfdbfe' }}>Manager View</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {user.isAdmin && (
+            <button onClick={() => router.push('/admin')} style={{ background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', padding: '5px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>⚙ Admin</button>
+          )}
           <span style={{ color: '#4a5568', fontSize: 13 }}>{user.name}</span>
           <button onClick={logout} style={{ background: 'white', border: '1px solid #dde3ec', color: '#4a5568', padding: '5px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Sign out</button>
         </div>
@@ -115,7 +128,7 @@ export default function ManagerDashboard() {
           <div>
             <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 24, fontWeight: 700, color: '#1a2332', margin: '0 0 4px' }}>Team Dashboard</h1>
             <p style={{ color: '#8496a9', fontSize: 14, margin: 0 }}>
-              {selectedEmployee === 'all' ? `Sintex Digital Team — ${EMPLOYEES.length} members` : `Viewing: ${selectedEmpName}`}
+              {selectedEmployee === 'all' ? `Sintex Digital Team — ${employees.length} members` : `Viewing: ${selectedEmpName}`}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
@@ -128,7 +141,7 @@ export default function ManagerDashboard() {
                 style={{ width: 'auto', minWidth: 160 }}
               >
                 <option value="all">All employees</option>
-                {EMPLOYEES.map(emp => (
+                {employees.map(emp => (
                   <option key={emp.email} value={emp.email}>{emp.name}</option>
                 ))}
               </select>

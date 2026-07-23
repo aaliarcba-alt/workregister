@@ -5,13 +5,14 @@ import { GOALS, CATEGORIES, BUSINESS_AREAS, WorkEntry } from '@/lib/supabase'
 import { format } from 'date-fns'
 import * as XLSX from 'xlsx'
 
-type User = { id: string; name: string; email: string; designation: string; isManager: boolean }
+type User = { id: string; name: string; email: string; designation: string; isManager: boolean; isAdmin: boolean }
 
 const MONTHS = ['All','January','February','March','April','May','June','July','August','September','October','November','December']
 const DRAFT_KEY = 'wr_entry_draft'
 
 interface TaskRow {
   id: string
+  dbId?: string
   category: string
   business_area: string
   report_name: string
@@ -47,6 +48,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false)
   const [notify, setNotify] = useState<{msg:string,type:'success'|'error'|'info'}|null>(null)
   const [selectedEntry, setSelectedEntry] = useState<WorkEntry | null>(null)
+  const [editOriginalIds, setEditOriginalIds] = useState<string[]>([])
   const [filterMonth, setFilterMonth] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
   const [filterWeek, setFilterWeek] = useState('All')
@@ -233,20 +235,48 @@ export default function Dashboard() {
     finally { setSaving(false) }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.task_details) return showNotify('Task details required', 'error')
-    if (!form.time_taken) return showNotify('Time taken required', 'error')
-    if (Number(form.time_taken) > 24) return showNotify('Time cannot exceed 24 hours', 'error')
-    if (!form.goals) return showNotify('Please select a goal', 'error')
+  async function handleEditDaySubmit() {
+    for (const row of taskRows) {
+      if (!row.category) return showNotify('Select category for all tasks', 'error')
+      if (!row.business_area) return showNotify('Select business area for all tasks', 'error')
+      if (!row.task_details.trim()) return showNotify('Task details required for all tasks', 'error')
+      if (!row.time_taken || isNaN(Number(row.time_taken)) || Number(row.time_taken) <= 0)
+        return showNotify('Valid hours required for all tasks', 'error')
+      if (!row.goals) return showNotify('Select a goal for all tasks', 'error')
+    }
+    const totalHours = taskRows.reduce((sum, r) => sum + Number(r.time_taken), 0)
+    if (totalHours < 7) return showNotify(`Total hours for the day must be at least 7 (currently ${totalHours})`, 'error')
+
     setSaving(true)
     try {
-      await fetch('/api/entries', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selectedEntry!.id, ...form }),
-      })
-      showNotify('Entry updated!', 'success')
+      const keptIds = taskRows.filter(r => r.dbId).map(r => r.dbId!)
+      const idsToDelete = editOriginalIds.filter(id => !keptIds.includes(id))
+
+      await Promise.all([
+        ...taskRows.map(row => {
+          const payload = {
+            employee_email: user!.email, employee_name: user!.name,
+            date: entryDate, category: row.category, business_area: row.business_area,
+            report_name: row.report_name, etl_job_name: row.etl_job_name,
+            task_details: row.task_details, time_taken: Number(row.time_taken),
+            status: row.status, goals: row.goals, comment: row.comment,
+          }
+          return row.dbId
+            ? fetch('/api/entries', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: row.dbId, ...payload }),
+              })
+            : fetch('/api/entries', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              })
+        }),
+        ...idsToDelete.map(id => fetch(`/api/entries?id=${id}`, { method: 'DELETE' })),
+      ])
+
+      showNotify('Day updated!', 'success')
       await fetchEntries()
       setView('list')
       resetForm()
@@ -264,11 +294,32 @@ export default function Dashboard() {
   function resetForm() {
     setForm({ date: format(new Date(), 'yyyy-MM-dd'), status: 'WIP', category: '', business_area: '', goals: '', task_details: '', time_taken: undefined, report_name: '', etl_job_name: '', comment: '' })
     setSelectedEntry(null)
+    setEditOriginalIds([])
+    setTaskRows([makeBlankRow()])
   }
 
   function handleEdit(entry: WorkEntry) {
+    // Editing one row now opens every task logged for that whole day, so
+    // the person can add, remove, or adjust tasks together and re-check
+    // the 7-hour total in one go.
+    const dayEntries = entries.filter(e => e.date === entry.date)
+    const rows: TaskRow[] = dayEntries.map(e => ({
+      id: e.id!,
+      dbId: e.id,
+      category: e.category,
+      business_area: e.business_area,
+      report_name: e.report_name,
+      etl_job_name: e.etl_job_name,
+      task_details: e.task_details,
+      time_taken: String(e.time_taken),
+      status: e.status,
+      goals: e.goals,
+      comment: e.comment,
+    }))
     setSelectedEntry(entry)
-    setForm({ ...entry })
+    setEditOriginalIds(dayEntries.map(e => e.id!))
+    setEntryDate(entry.date)
+    setTaskRows(rows.length ? rows : [makeBlankRow()])
     setView('edit')
   }
 
@@ -386,6 +437,9 @@ export default function Dashboard() {
               <button onClick={loadDraft} style={{ background: '#f59e0b', color: 'white', border: 'none', borderRadius: 5, padding: '3px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Resume</button>
               <button onClick={discardDraft} style={{ background: 'transparent', border: 'none', color: '#a16207', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
             </div>
+          )}
+          {user.isAdmin && (
+            <button onClick={() => router.push('/admin')} style={{ background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', padding: '5px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>⚙ Admin</button>
           )}
           <span style={{ color: '#4a5568', fontSize: 13 }}>{user.name}</span>
           <button onClick={logout} style={{ background: 'white', border: '1px solid #dde3ec', color: '#4a5568', padding: '5px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Sign out</button>
@@ -629,83 +683,104 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ══════ EDIT VIEW ══════ */}
-        {view === 'edit' && selectedEntry && (
-          <div style={{ maxWidth: 700, margin: '0 auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <button onClick={() => { setView('list'); resetForm() }} style={{ background: 'transparent', border: 'none', color: '#4a5568', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>←</button>
-              <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, fontWeight: 700, color: '#1a2332', margin: 0 }}>Edit Entry</h1>
+        {/* ══════ EDIT VIEW (whole day) ══════ */}
+        {view === 'edit' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div>
+                <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 20, fontWeight: 700, color: '#1a2332', margin: '0 0 3px' }}>Edit Day — {entryDate}</h1>
+                <p style={{ fontSize: 12, color: '#8496a9', margin: 0 }}>
+                  Every task logged for this day is shown below. Add, remove, or adjust tasks — total hours must stay ≥ 7.
+                </p>
+              </div>
+              <button className="btn-secondary" onClick={() => { setView('list'); resetForm() }}>← Back</button>
             </div>
+
             <div className="card">
-              <form onSubmit={handleSubmit}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Date *</label>
-                    <input className="input-field" type="date" value={form.date || ''} onChange={e => setForm(f => ({...f, date: e.target.value}))} required />
+              {/* Date + hours total */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #dde3ec' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#8496a9', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Date *</label>
+                  <input className="input-field" type="date" style={{ width: 180 }} value={entryDate} onChange={e => setEntryDate(e.target.value)} />
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                  <div style={{
+                    background: totalEntryHours >= 7 ? '#dcfce7' : '#fef9c3',
+                    color: totalEntryHours >= 7 ? '#15803d' : '#a16207',
+                    border: `1px solid ${totalEntryHours >= 7 ? '#bbf7d0' : '#fde68a'}`,
+                    padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  }}>
+                    Total: {totalEntryHours}h {totalEntryHours >= 7 ? '✓' : `(need ${(7 - totalEntryHours).toFixed(1)} more)`}
                   </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Status *</label>
-                    <select className="input-field" value={form.status || 'WIP'} onChange={e => setForm(f => ({...f, status: e.target.value as 'Complete'|'WIP'}))}>
-                      <option>WIP</option><option>Complete</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Category *</label>
-                    <select className="input-field"
-                      value={CATEGORIES.includes(form.category || '') || !form.category ? (form.category || '') : '__custom__'}
-                      onChange={e => setForm(f => ({...f, category: e.target.value === '__custom__' ? '' : e.target.value}))}
-                      required={CATEGORIES.includes(form.category || '') || !form.category}>
-                      <option value="">Select category</option>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                      <option value="__custom__">Other (type below)</option>
-                    </select>
-                    {!CATEGORIES.includes(form.category || '') && (
-                      <input className="input-field" type="text" placeholder="Type custom category…"
-                        value={form.category || ''}
-                        onChange={e => setForm(f => ({...f, category: e.target.value}))}
-                        style={{ marginTop: 6 }} required />
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Business Area *</label>
-                    <select className="input-field" value={form.business_area || ''} onChange={e => setForm(f => ({...f, business_area: e.target.value}))} required>
-                      <option value="">Select area</option>
+                </div>
+              </div>
+
+              {/* Column headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 0.8fr 1.4fr 0.5fr 0.7fr 1fr 0.7fr 32px', gap: 8, padding: '0 4px', marginBottom: 6 }}>
+                {['Category *','Business Area *','Report Name','ETL Job','Task Details *','Hours *','Status','Goals *','Comment',''].map(h => (
+                  <div key={h} style={{ fontSize: 11, fontWeight: 600, color: '#8496a9', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</div>
+                ))}
+              </div>
+
+              {/* Task rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {taskRows.map((row, idx) => (
+                  <div key={row.id} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 0.8fr 0.8fr 1.4fr 0.5fr 0.7fr 1fr 0.7fr 32px',
+                    gap: 8, alignItems: 'start',
+                    background: idx % 2 === 0 ? 'white' : '#f8fafc',
+                    padding: 8, borderRadius: 8, border: '1px solid #dde3ec',
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <select className="input-field"
+                        value={CATEGORIES.includes(row.category) || row.category === '' ? row.category : '__custom__'}
+                        onChange={e => updateRow(row.id, 'category', e.target.value === '__custom__' ? '' : e.target.value)}>
+                        <option value="">Select…</option>
+                        {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        <option value="__custom__">Other (type below)</option>
+                      </select>
+                      {!CATEGORIES.includes(row.category) && (
+                        <input className="input-field" type="text" placeholder="Type custom category…"
+                          value={row.category}
+                          onChange={e => updateRow(row.id, 'category', e.target.value)}
+                          style={{ fontSize: 12 }} />
+                      )}
+                    </div>
+                    <select className="input-field" value={row.business_area} onChange={e => updateRow(row.id, 'business_area', e.target.value)}>
+                      <option value="">Select…</option>
                       {BUSINESS_AREAS.map(b => <option key={b}>{b}</option>)}
                     </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Report Name (Power BI)</label>
-                    <input className="input-field" type="text" value={form.report_name || ''} onChange={e => setForm(f => ({...f, report_name: e.target.value}))} placeholder="Optional" />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>ETL Job Name</label>
-                    <input className="input-field" type="text" value={form.etl_job_name || ''} onChange={e => setForm(f => ({...f, etl_job_name: e.target.value}))} placeholder="Optional" />
-                  </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Task Details *</label>
-                    <textarea className="input-field" value={form.task_details || ''} onChange={e => setForm(f => ({...f, task_details: e.target.value}))} required rows={3} style={{ resize: 'vertical' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Time Taken (hours) *</label>
-                    <input className="input-field" type="number" min="0.5" max="24" step="0.5" value={form.time_taken || ''} onChange={e => setForm(f => ({...f, time_taken: Number(e.target.value)}))} required placeholder="0–24" />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Goals *</label>
-                    <select className="input-field" value={form.goals || ''} onChange={e => setForm(f => ({...f, goals: e.target.value}))} required>
-                      <option value="">Select goal</option>
+                    <input className="input-field" type="text" placeholder="Optional" value={row.report_name} onChange={e => updateRow(row.id, 'report_name', e.target.value)} />
+                    <input className="input-field" type="text" placeholder="Optional" value={row.etl_job_name} onChange={e => updateRow(row.id, 'etl_job_name', e.target.value)} />
+                    <input className="input-field" type="text" placeholder="Describe task…" value={row.task_details} onChange={e => updateRow(row.id, 'task_details', e.target.value)} />
+                    <input className="input-field" type="number" placeholder="hrs" min="0.5" max="24" step="0.5" value={row.time_taken} onChange={e => updateRow(row.id, 'time_taken', e.target.value)} />
+                    <select className="input-field" value={row.status} onChange={e => updateRow(row.id, 'status', e.target.value as 'Complete'|'WIP')}>
+                      <option>WIP</option><option>Complete</option>
+                    </select>
+                    <select className="input-field" value={row.goals} onChange={e => updateRow(row.id, 'goals', e.target.value)}>
+                      <option value="">Select…</option>
                       {GOALS.map(g => <option key={g}>{g}</option>)}
                     </select>
+                    <input className="input-field" type="text" placeholder="Optional" value={row.comment} onChange={e => updateRow(row.id, 'comment', e.target.value)} />
+                    <button onClick={() => removeRow(row.id)} disabled={taskRows.length === 1}
+                      style={{ width: 30, height: 30, borderRadius: 6, border: `1px solid ${taskRows.length === 1 ? '#dde3ec' : '#fecaca'}`, background: taskRows.length === 1 ? '#f8f8f8' : '#fef2f2', color: taskRows.length === 1 ? '#aaa' : '#dc2626', cursor: taskRows.length === 1 ? 'not-allowed' : 'pointer', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      ×
+                    </button>
                   </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <label style={{ display: 'block', color: '#4a5568', fontSize: 13, marginBottom: 6 }}>Comment</label>
-                    <input className="input-field" type="text" value={form.comment || ''} onChange={e => setForm(f => ({...f, comment: e.target.value}))} placeholder="Optional" />
-                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 14, borderTop: '1px solid #dde3ec' }}>
+                <button className="btn-secondary" onClick={addRow} style={{ fontSize: 13 }}>+ Add Another Task</button>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn-secondary" onClick={() => { setView('list'); resetForm() }}>Cancel</button>
+                  <button className="btn-primary" onClick={handleEditDaySubmit} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
                 </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn-secondary" onClick={() => { setView('list'); resetForm() }}>Cancel</button>
-                  <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Update Entry'}</button>
-                </div>
-              </form>
+              </div>
             </div>
           </div>
         )}

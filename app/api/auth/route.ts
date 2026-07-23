@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       email: data.email,
       designation: data.designation,
       isManager: data.designation?.toLowerCase() === 'cdo',
+      isAdmin: data.designation?.toLowerCase() === 'admin',
     }
   })
 }
